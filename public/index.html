@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auto Raster to Vector Converter</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="hero">
+      <h1>Raster to Vector Converter</h1>
+      <p>Image upload karo aur automatic SVG vector lo</p>
+    </header>
+
+    <section class="card">
+      <div class="dropzone" id="dropzone">
+        <input
+          type="file"
+          id="imageInput"
+          accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+          hidden
+        />
+        <div>
+          <h3>Image upload karo</h3>
+          <p>Drag &amp; drop ya click karke file select karo</p>
+        </div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card">
+        <h2>Original Image</h2>
+        <div id="preview" class="preview-box">
+          <span class="placeholder">No image selected</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Vector Result</h2>
+        <div id="result" class="result-box">
+          <span class="placeholder">SVG yahan dikhayega</span>
+        </div>
+        <div class="actions">
+          <a id="downloadBtn" class="download-btn disabled" href="#" download="vectorized.svg">
+            Download SVG
+          </a>
+        </div>
+      </section>
+    </div>
+
+    <p id="status" class="status"></p>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
