@@ -1,57 +1,732 @@
 <!DOCTYPE html>
-<html lang="hi">
+
+<html lang="en">
+
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Auto Raster to Vector Converter</title>
-  <link rel="stylesheet" href="style.css" />
+
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  >
+
+  <meta
+    name="theme-color"
+    content="#08090c"
+  >
+
+  <title>
+    Vectore — Image to Vector
+  </title>
+
+
+  <link
+    rel="preconnect"
+    href="https://fonts.googleapis.com"
+  >
+
+  <link
+    rel="preconnect"
+    href="https://fonts.gstatic.com"
+    crossorigin
+  >
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  >
+
+  <link
+    rel="stylesheet"
+    href="style.css"
+  >
+
 </head>
+
+
 <body>
-  <div class="container">
-    <header class="hero">
-      <h1>Raster to Vector Converter</h1>
-      <p>Image upload karo aur automatic SVG vector lo</p>
-    </header>
 
-    <section class="card">
-      <div class="dropzone" id="dropzone">
-        <input
-          type="file"
-          id="imageInput"
-          accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
-          hidden
-        />
-        <div>
-          <h3>Image upload karo</h3>
-          <p>Drag &amp; drop ya click karke file select karo</p>
-        </div>
-      </div>
-    </section>
 
-    <div class="grid">
-      <section class="card">
-        <h2>Original Image</h2>
-        <div id="preview" class="preview-box">
-          <span class="placeholder">No image selected</span>
-        </div>
-      </section>
+<!-- ===============================================
+     NAVBAR
+=============================================== -->
 
-      <section class="card">
-        <h2>Vector Result</h2>
-        <div id="result" class="result-box">
-          <span class="placeholder">SVG yahan dikhayega</span>
-        </div>
-        <div class="actions">
-          <a id="downloadBtn" class="download-btn disabled" href="#" download="vectorized.svg">
-            Download SVG
-          </a>
-        </div>
-      </section>
+<header class="navbar">
+
+  <div class="brand">
+
+    <div class="brand-logo">
+
+      <svg viewBox="0 0 24 24">
+
+        <path
+          d="M12 2 21 7v10l-9 5-9-5V7l9-5Z"
+        ></path>
+
+        <path
+          d="m3 7 9 5 9-5"
+        ></path>
+
+        <path
+          d="M12 12v10"
+        ></path>
+
+      </svg>
+
     </div>
 
-    <p id="status" class="status"></p>
+
+    <span class="brand-name">
+      Vectore
+    </span>
+
+
+    <span class="beta">
+      BETA
+    </span>
+
   </div>
 
-  <script src="app.js"></script>
+
+  <div class="private-processing">
+
+    <span class="green-dot"></span>
+
+    Vector processing
+
+  </div>
+
+</header>
+
+
+
+<!-- ===============================================
+     MAIN
+=============================================== -->
+
+<main class="main">
+
+
+  <!-- HERO -->
+
+  <section class="hero">
+
+    <div class="eyebrow">
+      ✦ RASTER TO VECTOR
+    </div>
+
+
+    <h1>
+
+      Turn pixels into
+
+      <span>
+        perfect vectors.
+      </span>
+
+    </h1>
+
+
+    <p>
+
+      Convert PNG, JPG and WebP images into clean,
+      scalable vector artwork and save your result
+      as SVG or vector PDF.
+
+    </p>
+
+  </section>
+
+
+
+  <!-- =============================================
+       UPLOAD
+  ============================================== -->
+
+  <section
+    id="uploadSection"
+    class="upload-section"
+  >
+
+
+    <input
+      id="imageInput"
+      type="file"
+      accept="image/png,image/jpeg,image/webp,image/avif,image/gif"
+      hidden
+    >
+
+
+    <div
+      id="dropzone"
+      class="dropzone"
+    >
+
+
+      <div class="upload-icon">
+
+        <svg viewBox="0 0 24 24">
+
+          <path
+            d="M12 16V4"
+          ></path>
+
+          <path
+            d="m7 9 5-5 5 5"
+          ></path>
+
+          <path
+            d="M20 15v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4"
+          ></path>
+
+        </svg>
+
+      </div>
+
+
+      <h2>
+        Drop your image here
+      </h2>
+
+
+      <p>
+
+        or
+
+        <button
+          id="browseButton"
+          class="browse-button"
+          type="button"
+        >
+          browse files
+        </button>
+
+        from your computer
+
+      </p>
+
+
+      <div class="supported">
+
+        PNG • JPG • WEBP
+
+        <span>
+          UP TO 25 MB
+        </span>
+
+      </div>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- =============================================
+       FEATURES
+  ============================================== -->
+
+  <section
+    id="features"
+    class="features"
+  >
+
+
+    <div class="feature">
+
+      <div class="feature-symbol">
+        ◇
+      </div>
+
+      <strong>
+        True vector
+      </strong>
+
+      <span>
+        Scalable paths
+      </span>
+
+    </div>
+
+
+    <div class="feature">
+
+      <div class="feature-symbol">
+        ⚡
+      </div>
+
+      <strong>
+        Fast processing
+      </strong>
+
+      <span>
+        Optimized pipeline
+      </span>
+
+    </div>
+
+
+    <div class="feature">
+
+      <div class="feature-symbol">
+        ◈
+      </div>
+
+      <strong>
+        Flexible export
+      </strong>
+
+      <span>
+        SVG or vector PDF
+      </span>
+
+    </div>
+
+  </section>
+
+
+
+  <!-- =============================================
+       WORKSPACE
+  ============================================== -->
+
+  <section
+    id="workspace"
+    class="workspace hidden"
+  >
+
+
+    <!-- FILE HEADER -->
+
+    <div class="workspace-top">
+
+
+      <div class="file-info">
+
+
+        <div class="file-icon">
+
+          <svg viewBox="0 0 24 24">
+
+            <path
+              d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
+            ></path>
+
+            <path
+              d="M14 2v6h6"
+            ></path>
+
+          </svg>
+
+        </div>
+
+
+        <div class="file-text">
+
+          <strong
+            id="fileName"
+          >
+            image.png
+          </strong>
+
+          <span
+            id="fileMeta"
+          >
+            Image
+          </span>
+
+        </div>
+
+      </div>
+
+
+      <button
+        id="newImageButton"
+        class="new-image-button"
+        type="button"
+      >
+
+        <span>
+          +
+        </span>
+
+        New image
+
+      </button>
+
+    </div>
+
+
+
+    <!-- ===========================================
+         EDITOR
+    ============================================ -->
+
+    <div class="editor">
+
+
+      <!-- TABS -->
+
+      <div class="tabs">
+
+        <button
+          class="tab active"
+          data-view="original"
+          type="button"
+        >
+          Original
+        </button>
+
+
+        <button
+          class="tab"
+          data-view="vector"
+          type="button"
+        >
+          Vector
+        </button>
+
+      </div>
+
+
+
+      <!-- CANVAS -->
+
+      <div
+        id="canvas"
+        class="canvas"
+      >
+
+        <div class="checker"></div>
+
+
+        <img
+          id="originalImage"
+          class="original-image"
+          alt="Original image preview"
+        >
+
+
+        <div
+          id="vectorPreview"
+          class="vector-preview hidden"
+        ></div>
+
+
+
+        <!-- PROCESSING OVERLAY -->
+
+        <div
+          id="processing"
+          class="processing hidden"
+        >
+
+
+          <div class="loader"></div>
+
+
+          <strong>
+            Creating your vector
+          </strong>
+
+
+          <span
+            id="processingText"
+          >
+            Analyzing image...
+          </span>
+
+
+          <div class="progress-track">
+
+            <div
+              id="progressBar"
+              class="progress-bar"
+            ></div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+
+
+      <!-- ===========================================
+           BOTTOM TOOLBAR
+      ============================================ -->
+
+      <div class="bottom-toolbar">
+
+
+        <div
+          id="resultInfo"
+          class="result-info"
+        >
+          Ready to vectorize
+        </div>
+
+
+
+        <div class="actions">
+
+
+          <!-- COPY -->
+
+          <button
+            id="copyButton"
+            class="secondary-button hidden"
+            type="button"
+          >
+
+            <svg viewBox="0 0 24 24">
+
+              <rect
+                x="9"
+                y="9"
+                width="13"
+                height="13"
+                rx="2"
+              ></rect>
+
+              <path
+                d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+              ></path>
+
+            </svg>
+
+            Copy SVG
+
+          </button>
+
+
+
+          <!-- VECTORIZE -->
+
+          <button
+            id="vectorizeButton"
+            class="primary-button"
+            type="button"
+          >
+
+            <span>
+              ✦
+            </span>
+
+            Vectorize
+
+          </button>
+
+
+
+          <!-- =====================================
+               SAVE VECTOR
+          ====================================== -->
+
+          <div
+            id="saveWrapper"
+            class="save-wrapper hidden"
+          >
+
+
+            <button
+              id="saveButton"
+              class="primary-button"
+              type="button"
+            >
+
+              <svg viewBox="0 0 24 24">
+
+                <path
+                  d="M12 3v12"
+                ></path>
+
+                <path
+                  d="m7 10 5 5 5-5"
+                ></path>
+
+                <path
+                  d="M5 21h14"
+                ></path>
+
+              </svg>
+
+
+              Save vector
+
+
+              <span class="arrow">
+                ▾
+              </span>
+
+            </button>
+
+
+
+            <!-- SAVE MENU -->
+
+            <div
+              id="saveMenu"
+              class="save-menu hidden"
+            >
+
+
+              <div class="save-menu-header">
+
+                <strong>
+                  Save vector as
+                </strong>
+
+                <span>
+                  Choose your vector format
+                </span>
+
+              </div>
+
+
+
+              <!-- SVG -->
+
+              <button
+                id="saveSvg"
+                class="format-option"
+                type="button"
+              >
+
+
+                <div
+                  class="format-logo svg-format"
+                >
+                  SVG
+                </div>
+
+
+                <div class="format-description">
+
+                  <strong>
+                    SVG
+                  </strong>
+
+                  <span>
+                    Scalable Vector Graphics
+                  </span>
+
+                  <small>
+                    Best for editing & web
+                  </small>
+
+                </div>
+
+
+                <div class="option-arrow">
+                  ›
+                </div>
+
+              </button>
+
+
+
+              <!-- PDF -->
+
+              <button
+                id="savePdf"
+                class="format-option"
+                type="button"
+              >
+
+
+                <div
+                  class="format-logo pdf-format"
+                >
+                  PDF
+                </div>
+
+
+                <div class="format-description">
+
+                  <strong>
+                    PDF
+                  </strong>
+
+                  <span>
+                    Vector PDF document
+                  </span>
+
+                  <small>
+                    Best for print & sharing
+                  </small>
+
+                </div>
+
+
+                <div class="option-arrow">
+                  ›
+                </div>
+
+              </button>
+
+
+
+              <div class="vector-message">
+
+                <span>
+                  ◇
+                </span>
+
+                Both options preserve
+                vector artwork
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+  </section>
+
+</main>
+
+
+
+<!-- ===============================================
+     FOOTER
+=============================================== -->
+
+<footer>
+
+  <span>
+    Vectore
+  </span>
+
+  <span>
+    Raster → Vector, simplified.
+  </span>
+
+</footer>
+
+
+
+<!-- ===============================================
+     TOAST
+=============================================== -->
+
+<div
+  id="toast"
+  class="toast"
+></div>
+
+
+
+<script src="app.js"></script>
+
+
 </body>
+
 </html>

@@ -1,0 +1,31 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment / secrets
+.env
+.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Windows / OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Local Rust installer
+rustup-init.exe
+
+# Local screenshots
+Screenshots/

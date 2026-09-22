@@ -1,82 +1,189 @@
-const express = require('express');
-const multer = require('multer');
-const sharp = require('sharp');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const { execFile } = require('child_process');
+const express =
+  require("express");
 
-const app = express();
+const multer =
+  require("multer");
+
+const sharp =
+  require("sharp");
+
+const fs =
+  require("fs");
+
+const path =
+  require("path");
+
+const os =
+  require("os");
+
+const {
+  execFile
+} =
+  require("child_process");
+
+const PDFDocument =
+  require("pdfkit");
+
+const SVGtoPDF =
+  require("svg-to-pdfkit");
+
+
+/* =========================================================
+   APP
+========================================================= */
+
+const app =
+  express();
 
 const PORT =
-  process.env.PORT || 3000;
+  process.env.PORT ||
+  3000;
+
+
+/* =========================================================
+   PLATFORM
+========================================================= */
+
+const IS_WINDOWS =
+  process.platform ===
+  "win32";
 
 
 /* =========================================================
    PATHS
 ========================================================= */
 
+/*
+ * WINDOWS:
+ *
+ * C:\Users\USER\.cargo\bin\vtracer.exe
+ *
+ * RENDER / DOCKER / LINUX:
+ *
+ * /root/.cargo/bin/vtracer
+ *
+ * Environment variable ko highest priority milegi.
+ */
+
 const VTRACER_EXE =
-  process.env.VTRACER_EXE ||
-  path.join(
-    process.env.USERPROFILE || '',
-    '.cargo',
-    'bin',
-    'vtracer.exe'
+  process.env.VTRACER_EXE
+  ||
+  (
+    IS_WINDOWS
+
+      ? path.join(
+          process.env.USERPROFILE || "",
+          ".cargo",
+          "bin",
+          "vtracer.exe"
+        )
+
+      : "/root/.cargo/bin/vtracer"
   );
 
+
+/*
+ * WINDOWS:
+ *
+ * project\.venv\Scripts\python.exe
+ *
+ * RENDER / DOCKER:
+ *
+ * /opt/venv/bin/python
+ */
+
 const PYTHON_EXE =
-  path.join(
-    __dirname,
-    '.venv',
-    'Scripts',
-    'python.exe'
+  process.env.PYTHON_EXE
+  ||
+  (
+    IS_WINDOWS
+
+      ? path.join(
+          __dirname,
+          ".venv",
+          "Scripts",
+          "python.exe"
+        )
+
+      : "/opt/venv/bin/python"
   );
+
 
 const PREPROCESS_SCRIPT =
   path.join(
     __dirname,
-    'preprocess.py'
+    "preprocess.py"
   );
+
+
+/* =========================================================
+   PDF BODY
+========================================================= */
+
+app.use(
+  "/api/export/pdf",
+
+  express.text({
+
+    type:
+      "*/*",
+
+    limit:
+      "30mb"
+
+  })
+);
 
 
 /* =========================================================
    UPLOAD
 ========================================================= */
 
-const upload = multer({
+const upload =
+  multer({
 
-  storage:
-    multer.memoryStorage(),
+    storage:
+      multer.memoryStorage(),
 
-  limits: {
-    fileSize:
-      25 * 1024 * 1024
-  },
+    limits: {
 
-  fileFilter:
-    (req, file, cb) => {
+      fileSize:
+        25 *
+        1024 *
+        1024
 
-      if (
-        !file.mimetype ||
-        !file.mimetype.startsWith(
-          'image/'
-        )
-      ) {
+    },
 
-        return cb(
-          new Error(
-            'Sirf image files allow hain'
+    fileFilter:
+      (
+        req,
+        file,
+        cb
+      ) => {
+
+        if (
+          !file.mimetype
+          ||
+          !file.mimetype.startsWith(
+            "image/"
           )
+        ) {
+
+          return cb(
+            new Error(
+              "Sirf image files allowed hain"
+            )
+          );
+        }
+
+
+        cb(
+          null,
+          true
         );
       }
 
-      cb(
-        null,
-        true
-      );
-    }
-});
+  });
 
 
 /* =========================================================
@@ -87,9 +194,117 @@ app.use(
   express.static(
     path.join(
       __dirname,
-      'public'
+      "public"
     )
   )
+);
+
+
+/* =========================================================
+   HEALTH CHECK API
+========================================================= */
+
+/*
+ * Render deployment ke baad:
+ *
+ * https://YOUR-APP.onrender.com/api/health
+ *
+ * Is endpoint se check kar sakte hain:
+ *
+ * Node
+ * Python
+ * VTracer
+ * preprocess.py
+ */
+
+app.get(
+  "/api/health",
+
+  (
+    req,
+    res
+  ) => {
+
+    const pythonExists =
+      fs.existsSync(
+        PYTHON_EXE
+      );
+
+
+    const vtracerExists =
+      fs.existsSync(
+        VTRACER_EXE
+      );
+
+
+    const preprocessorExists =
+      fs.existsSync(
+        PREPROCESS_SCRIPT
+      );
+
+
+    const healthy =
+      pythonExists
+      &&
+      vtracerExists
+      &&
+      preprocessorExists;
+
+
+    return res
+      .status(
+        healthy
+          ? 200
+          : 503
+      )
+      .json({
+
+        ok:
+          healthy,
+
+        service:
+          "vectore",
+
+        platform:
+          process.platform,
+
+        environment:
+          process.env.NODE_ENV ||
+          "development",
+
+        node:
+          process.version,
+
+        dependencies: {
+
+          python: {
+            available:
+              pythonExists,
+
+            path:
+              PYTHON_EXE
+          },
+
+          vtracer: {
+            available:
+              vtracerExists,
+
+            path:
+              VTRACER_EXE
+          },
+
+          preprocessor: {
+            available:
+              preprocessorExists,
+
+            path:
+              PREPROCESS_SCRIPT
+          }
+
+        }
+
+      });
+  }
 );
 
 
@@ -97,12 +312,15 @@ app.use(
    TEMP FILE
 ========================================================= */
 
-function tempFile(extension) {
+function tempFile(
+  extension
+) {
 
   const id =
     `${Date.now()}-${process.pid}-${Math.random()
       .toString(36)
       .slice(2)}`;
+
 
   return path.join(
     os.tmpdir(),
@@ -112,21 +330,25 @@ function tempFile(extension) {
 
 
 /* =========================================================
-   SVG CLEAN
+   CLEAN SVG
 ========================================================= */
 
-function stripSvgWrapper(svg) {
+function stripSvgWrapper(
+  svg
+) {
 
-  return String(svg)
+  return String(
+    svg
+  )
 
     .replace(
       /<\?xml[\s\S]*?\?>\s*/i,
-      ''
+      ""
     )
 
     .replace(
       /<!doctype[\s\S]*?>\s*/i,
-      ''
+      ""
     );
 }
 
@@ -135,12 +357,17 @@ function stripSvgWrapper(svg) {
    COUNT SVG PATHS
 ========================================================= */
 
-function countSvgPaths(svg) {
+function countSvgPaths(
+  svg
+) {
 
   const matches =
-    String(svg).match(
+    String(
+      svg
+    ).match(
       /<path\b/gi
     );
+
 
   return matches
     ? matches.length
@@ -171,6 +398,7 @@ function execute(
         args,
 
         {
+
           windowsHide:
             true,
 
@@ -178,6 +406,7 @@ function execute(
             30 *
             1024 *
             1024
+
         },
 
         (
@@ -186,7 +415,9 @@ function execute(
           stderr
         ) => {
 
-          if (stdout) {
+          if (
+            stdout
+          ) {
 
             console.log(
               stdout.trim()
@@ -194,7 +425,9 @@ function execute(
           }
 
 
-          if (error) {
+          if (
+            error
+          ) {
 
             const message =
               (
@@ -226,7 +459,7 @@ function execute(
 
 
 /* =========================================================
-   NORMALIZE ORIGINAL
+   NORMALIZE INPUT
 ========================================================= */
 
 async function normalizeInput(
@@ -235,27 +468,34 @@ async function normalizeInput(
 ) {
 
   await sharp(
+
     buffer,
+
     {
       failOn:
-        'none'
+        "none"
     }
+
   )
 
     .rotate()
 
     .flatten({
+
       background:
-        '#ffffff'
+        "#ffffff"
+
     })
 
     .toColourspace(
-      'srgb'
+      "srgb"
     )
 
     .png({
+
       compressionLevel:
         4
+
     })
 
     .toFile(
@@ -265,7 +505,7 @@ async function normalizeInput(
 
 
 /* =========================================================
-   PYTHON PREPROCESSING
+   PREPROCESS
 ========================================================= */
 
 async function preprocessImage(
@@ -283,7 +523,7 @@ async function preprocessImage(
       output
     ],
 
-    'OpenCV Preprocessor'
+    "OpenCV Preprocessor"
   );
 
 
@@ -294,7 +534,7 @@ async function preprocessImage(
   ) {
 
     throw new Error(
-      'Processed PNG generate nahi hui'
+      "Processed PNG generate nahi hui"
     );
   }
 }
@@ -310,93 +550,64 @@ async function traceImage(
 ) {
 
   /*
-   * Current stable configuration.
+   * IMPORTANT:
    *
-   * Important:
-   * Ab path-by-path Resvg post processing nahi hai.
+   * Tumhari existing vectorization profile ko
+   * deployment ke liye change nahi kiya gaya.
    */
 
   const args = [
 
-    '-i',
+    "-i",
     input,
 
-    '-o',
+    "-o",
     output,
 
 
-    '--preset',
-    'poster',
+    "--preset",
+    "poster",
 
 
-    '--clustering',
-    'color-cluster',
+    "--clustering",
+    "color-cluster",
 
 
-    '--hierarchical',
-    'stacked',
+    "--hierarchical",
+    "stacked",
 
 
-    '--mode',
-    'spline',
+    "--mode",
+    "spline",
 
 
-    /*
-     * Tiny garbage paths ko thoda filter karo.
-     * 2 details preserve karta hai.
-     */
-
-    '--filter-speckle',
-    '2',
+    "--filter-speckle",
+    "3",
 
 
-    /*
-     * Good color accuracy.
-     */
-
-    '--color-precision',
-    '7',
+    "--color-precision",
+    "7",
 
 
-    /*
-     * Gradients ko extremely tiny layers
-     * mein break hone se reduce karta hai.
-     */
-
-    '--gradient-step',
-    '12',
+    "--gradient-step",
+    "18",
 
 
-    /*
-     * Shape accuracy + reasonable simplification.
-     */
-
-    '--simplify',
-    '1.15',
+    "--simplify",
+    "1.25",
 
 
-    /*
-     * SVG coordinates.
-     */
-
-    '--path-precision',
-    '3',
+    "--path-precision",
+    "3",
 
 
-    /*
-     * Preprocessor already around 40 colors
-     * generate karta hai.
-
-     * 44 enough headroom deta hai without
-     * going back toward 128-color fragmentation.
-     */
-
-    '--max-colors',
-    '44',
+    "--max-colors",
+    "40",
 
 
-    '--optimize',
-    '2'
+    "--optimize",
+    "2"
+
   ];
 
 
@@ -406,7 +617,7 @@ async function traceImage(
 
     args,
 
-    'VTracer'
+    "VTracer"
   );
 
 
@@ -417,7 +628,7 @@ async function traceImage(
   ) {
 
     throw new Error(
-      'SVG generate nahi hua'
+      "SVG generate nahi hua"
     );
   }
 }
@@ -469,28 +680,26 @@ async function vectorizeAuto(
 
   const original =
     tempFile(
-      'original.png'
+      "original.png"
     );
+
 
   const processed =
     tempFile(
-      'processed.png'
+      "processed.png"
     );
+
 
   const outputSvg =
     tempFile(
-      'svg'
+      "svg"
     );
 
 
   try {
 
-    /*
-     * STEP 1
-     */
-
     console.log(
-      '[1/3] Normalizing image...'
+      "[1/3] Normalizing image..."
     );
 
 
@@ -500,12 +709,8 @@ async function vectorizeAuto(
     );
 
 
-    /*
-     * STEP 2
-     */
-
     console.log(
-      '[2/3] OpenCV/LAB preprocessing...'
+      "[2/3] Gentle illustration preprocessing..."
     );
 
 
@@ -515,12 +720,8 @@ async function vectorizeAuto(
     );
 
 
-    /*
-     * STEP 3
-     */
-
     console.log(
-      '[3/3] VTracer spline tracing...'
+      "[3/3] VTracer balanced tracing..."
     );
 
 
@@ -533,19 +734,20 @@ async function vectorizeAuto(
     const svg =
       await fs.promises.readFile(
         outputSvg,
-        'utf8'
+        "utf8"
       );
 
 
     if (
-      !svg ||
+      !svg
+      ||
       !svg.includes(
-        '<svg'
+        "<svg"
       )
     ) {
 
       throw new Error(
-        'Invalid SVG generated'
+        "Invalid SVG generated"
       );
     }
 
@@ -556,18 +758,18 @@ async function vectorizeAuto(
       );
 
 
-    console.log(
-      `SVG paths: ${pathCount}`
-    );
-
-
     const svgSizeKB =
       Buffer.byteLength(
         svg,
-        'utf8'
+        "utf8"
       )
       /
       1024;
+
+
+    console.log(
+      `SVG paths: ${pathCount}`
+    );
 
 
     console.log(
@@ -603,15 +805,15 @@ async function vectorizeAuto(
 
 
 /* =========================================================
-   API
+   VECTORIZE API
 ========================================================= */
 
 app.post(
 
-  '/api/vectorize',
+  "/api/vectorize",
 
   upload.single(
-    'image'
+    "image"
   ),
 
   async (
@@ -630,16 +832,16 @@ app.post(
           .json({
 
             error:
-              'Image required'
+              "Image required"
 
           });
       }
 
 
-      console.log('');
+      console.log("");
 
       console.log(
-        '========================================'
+        "========================================"
       );
 
 
@@ -677,19 +879,19 @@ app.post(
 
 
       console.log(
-        '========================================'
+        "========================================"
       );
 
 
       res.setHeader(
-        'Content-Type',
-        'image/svg+xml; charset=utf-8'
+        "Content-Type",
+        "image/svg+xml; charset=utf-8"
       );
 
 
       res.setHeader(
-        'Cache-Control',
-        'no-store'
+        "Cache-Control",
+        "no-store"
       );
 
 
@@ -704,7 +906,7 @@ app.post(
     ) {
 
       console.error(
-        'Vectorization error:',
+        "Vectorization error:",
         error
       );
 
@@ -714,7 +916,7 @@ app.post(
         .json({
 
           error:
-            'Vectorization failed',
+            "Vectorization failed",
 
           details:
             error.message
@@ -726,10 +928,344 @@ app.post(
 
 
 /* =========================================================
+   SVG SIZE
+========================================================= */
+
+function getSvgDimensions(
+  svg
+) {
+
+  let width =
+    null;
+
+  let height =
+    null;
+
+
+  const widthMatch =
+    svg.match(
+      /<svg[^>]*\bwidth=["']\s*([\d.]+)/i
+    );
+
+
+  const heightMatch =
+    svg.match(
+      /<svg[^>]*\bheight=["']\s*([\d.]+)/i
+    );
+
+
+  if (
+    widthMatch
+  ) {
+
+    width =
+      Number(
+        widthMatch[1]
+      );
+  }
+
+
+  if (
+    heightMatch
+  ) {
+
+    height =
+      Number(
+        heightMatch[1]
+      );
+  }
+
+
+  const viewBoxMatch =
+    svg.match(
+      /viewBox=["']([^"']+)["']/i
+    );
+
+
+  if (
+    viewBoxMatch
+  ) {
+
+    const values =
+      viewBoxMatch[1]
+
+        .trim()
+
+        .split(
+          /[\s,]+/
+        )
+
+        .map(
+          Number
+        );
+
+
+    if (
+      values.length ===
+        4
+      &&
+      values.every(
+        Number.isFinite
+      )
+    ) {
+
+      width =
+        width ||
+        values[2];
+
+
+      height =
+        height ||
+        values[3];
+    }
+  }
+
+
+  if (
+    !Number.isFinite(
+      width
+    )
+    ||
+    width <= 0
+  ) {
+
+    width =
+      800;
+  }
+
+
+  if (
+    !Number.isFinite(
+      height
+    )
+    ||
+    height <= 0
+  ) {
+
+    height =
+      600;
+  }
+
+
+  return {
+
+    width,
+
+    height
+
+  };
+}
+
+
+/* =========================================================
+   VECTOR PDF EXPORT
+========================================================= */
+
+app.post(
+
+  "/api/export/pdf",
+
+  async (
+    req,
+    res
+  ) => {
+
+    try {
+
+      const svg =
+        String(
+          req.body || ""
+        );
+
+
+      if (
+        !svg
+        ||
+        !svg.includes(
+          "<svg"
+        )
+      ) {
+
+        return res
+          .status(400)
+          .json({
+
+            error:
+              "Valid SVG required"
+
+          });
+      }
+
+
+      const {
+        width,
+        height
+      } =
+        getSvgDimensions(
+          svg
+        );
+
+
+      const maxPageSide =
+        1440;
+
+
+      const scale =
+        Math.min(
+
+          1,
+
+          maxPageSide /
+          width,
+
+          maxPageSide /
+          height
+
+        );
+
+
+      const pageWidth =
+        Math.max(
+
+          1,
+
+          width *
+          scale
+
+        );
+
+
+      const pageHeight =
+        Math.max(
+
+          1,
+
+          height *
+          scale
+
+        );
+
+
+      const doc =
+        new PDFDocument({
+
+          size: [
+
+            pageWidth,
+
+            pageHeight
+
+          ],
+
+          margin:
+            0,
+
+          compress:
+            true
+
+        });
+
+
+      res.setHeader(
+        "Content-Type",
+        "application/pdf"
+      );
+
+
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="vector.pdf"'
+      );
+
+
+      res.setHeader(
+        "Cache-Control",
+        "no-store"
+      );
+
+
+      doc.pipe(
+        res
+      );
+
+
+      /*
+       * SVG -> PDF vector.
+       *
+       * Raster image mein convert nahi ho raha.
+       */
+
+      SVGtoPDF(
+
+        doc,
+
+        svg,
+
+        0,
+        0,
+
+        {
+
+          width:
+            pageWidth,
+
+          height:
+            pageHeight,
+
+          preserveAspectRatio:
+            "xMidYMid meet",
+
+          assumePt:
+            true
+
+        }
+      );
+
+
+      doc.end();
+
+    }
+
+    catch (
+      error
+    ) {
+
+      console.error(
+        "PDF export error:",
+        error
+      );
+
+
+      if (
+        !res.headersSent
+      ) {
+
+        return res
+          .status(500)
+          .json({
+
+            error:
+              "PDF export failed",
+
+            details:
+              error.message
+
+          });
+      }
+
+
+      res.end();
+    }
+  }
+);
+
+
+/* =========================================================
    ERROR HANDLER
 ========================================================= */
 
 app.use(
+
   (
     err,
     req,
@@ -747,7 +1283,7 @@ app.use(
         multer.MulterError
       &&
       err.code ===
-        'LIMIT_FILE_SIZE'
+        "LIMIT_FILE_SIZE"
     ) {
 
       return res
@@ -755,7 +1291,7 @@ app.use(
         .json({
 
           error:
-            'Maximum image size 25 MB hai'
+            "Maximum image size 25 MB hai"
 
         });
     }
@@ -767,7 +1303,7 @@ app.use(
 
         error:
           err.message ||
-          'Upload error'
+          "Upload error"
 
       });
   }
@@ -779,26 +1315,44 @@ app.use(
 ========================================================= */
 
 app.listen(
+
   PORT,
+
+  "0.0.0.0",
+
   () => {
 
-    console.log('');
+    console.log("");
 
     console.log(
-      '========================================'
+      "========================================"
     );
 
     console.log(
-      ' Fast Vectorization Server'
+      " VECTORE"
     );
 
     console.log(
-      '========================================'
+      " BALANCED ILLUSTRATION MODE"
+    );
+
+    console.log(
+      "========================================"
     );
 
 
     console.log(
-      `Server: http://localhost:${PORT}`
+      `Environment: ${process.env.NODE_ENV || "development"}`
+    );
+
+
+    console.log(
+      `Platform: ${process.platform}`
+    );
+
+
+    console.log(
+      `Server: http://0.0.0.0:${PORT}`
     );
 
 
@@ -808,7 +1362,17 @@ app.listen(
 
 
     console.log(
+      `VTracer path: ${VTRACER_EXE}`
+    );
+
+
+    console.log(
       `Python: ${fs.existsSync(PYTHON_EXE)}`
+    );
+
+
+    console.log(
+      `Python path: ${PYTHON_EXE}`
     );
 
 
@@ -818,19 +1382,19 @@ app.listen(
 
 
     console.log(
-      'Profile: Anime / Illustration'
+      "Profile: Anime / Illustration Balanced"
     );
 
 
     console.log(
-      'Path-by-path Resvg: DISABLED'
+      "Export: SVG + Vector PDF"
     );
 
 
     console.log(
-      '========================================'
+      "========================================"
     );
 
-    console.log('');
+    console.log("");
   }
 );

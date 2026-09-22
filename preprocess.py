@@ -3,506 +3,370 @@ import cv2
 import numpy as np
 
 
-# ==========================================================
-# CONFIGURATION
-# ==========================================================
+# ============================================================
+# CONFIG
+# ============================================================
 
-MAX_SIZE = 1600
-NUM_COLORS = 40
+# Subject mein enough colors rakho taaki
+# eyes / hair / skin / clothes destroy na hon.
+SUBJECT_COLORS = 26
 
-MIN_REGION_PIXELS = 18
-MERGE_COLOR_DISTANCE = 24.0
-DARK_PROTECTION_L = 65
+# Background ko subject se zyada simplify karenge.
+BACKGROUND_COLORS = 7
+
+# Connected tiny color islands.
+MIN_REGION_AREA = 28
 
 
-# ==========================================================
-# RESIZE
-# ==========================================================
+# ============================================================
+# IMAGE LOAD
+# ============================================================
 
-def resize_image(image, max_size=MAX_SIZE):
-
-    height, width = image.shape[:2]
-
-    largest_side = max(width, height)
-
-    if largest_side <= max_size:
-        return image
-
-    scale = max_size / float(largest_side)
-
-    new_width = max(
-        1,
-        int(round(width * scale))
+def load_image(filename):
+    image = cv2.imread(
+        filename,
+        cv2.IMREAD_COLOR
     )
 
-    new_height = max(
+    if image is None:
+        raise RuntimeError(
+            f"Image load failed: {filename}"
+        )
+
+    return image
+
+
+# ============================================================
+# RESIZE FOR PROCESSING
+# ============================================================
+
+def resize_for_processing(image, max_side=1400):
+    h, w = image.shape[:2]
+
+    longest = max(h, w)
+
+    if longest <= max_side:
+        return image
+
+    scale = max_side / float(longest)
+
+    new_w = max(
         1,
-        int(round(height * scale))
+        int(round(w * scale))
+    )
+
+    new_h = max(
+        1,
+        int(round(h * scale))
     )
 
     return cv2.resize(
         image,
-        (new_width, new_height),
+        (new_w, new_h),
         interpolation=cv2.INTER_AREA
     )
 
 
-# ==========================================================
-# EDGE-PRESERVING FILTER
-# ==========================================================
+# ============================================================
+# EDGE PRESERVING SMOOTH
+# ============================================================
 
-def edge_preserving_filter(image):
+def edge_preserving_smooth(image):
+    """
+    Gaussian blur use nahi kar rahe.
 
-    return cv2.bilateralFilter(
+    Bilateral filter similar colors ko smooth karta hai
+    lekin strong boundaries ko comparatively preserve karta hai.
+    """
+
+    first = cv2.bilateralFilter(
         image,
-        d=7,
-        sigmaColor=25,
-        sigmaSpace=7
+        d=9,
+        sigmaColor=36,
+        sigmaSpace=36
     )
 
+    second = cv2.bilateralFilter(
+        first,
+        d=7,
+        sigmaColor=25,
+        sigmaSpace=25
+    )
 
-# ==========================================================
-# LAB K-MEANS COLOR QUANTIZATION
-# ==========================================================
+    return second
 
-def quantize_lab(
-    image,
-    number_of_colors=NUM_COLORS
-):
+
+# ============================================================
+# ESTIMATE FOREGROUND MASK
+# ============================================================
+
+def create_subject_mask(image):
+    """
+    General automatic subject approximation.
+
+    Ye semantic AI segmentation nahi hai.
+
+    Anime portraits mein center foreground ko preserve karne
+    aur outer/background regions ko stronger simplify karne ke
+    liye GrabCut + center prior use hota hai.
+    """
+
+    h, w = image.shape[:2]
+
+    # Bahut small image ke case mein full subject.
+    if w < 80 or h < 80:
+        return np.full(
+            (h, w),
+            255,
+            dtype=np.uint8
+        )
+
+    gc_mask = np.zeros(
+        (h, w),
+        dtype=np.uint8
+    )
+
+    margin_x = max(
+        2,
+        int(w * 0.035)
+    )
+
+    margin_y = max(
+        2,
+        int(h * 0.025)
+    )
+
+    rect = (
+        margin_x,
+        margin_y,
+        max(1, w - margin_x * 2),
+        max(1, h - margin_y * 2)
+    )
+
+    bg_model = np.zeros(
+        (1, 65),
+        np.float64
+    )
+
+    fg_model = np.zeros(
+        (1, 65),
+        np.float64
+    )
+
+    try:
+        cv2.grabCut(
+            image,
+            gc_mask,
+            rect,
+            bg_model,
+            fg_model,
+            4,
+            cv2.GC_INIT_WITH_RECT
+        )
+
+        subject = np.where(
+            (gc_mask == cv2.GC_FGD) |
+            (gc_mask == cv2.GC_PR_FGD),
+            255,
+            0
+        ).astype(np.uint8)
+
+    except cv2.error:
+        subject = np.full(
+            (h, w),
+            255,
+            dtype=np.uint8
+        )
+
+    # Center prior:
+    # portrait ka important subject usually center mein hota hai.
+    center = np.zeros(
+        (h, w),
+        dtype=np.uint8
+    )
+
+    cv2.ellipse(
+        center,
+        (
+            w // 2,
+            int(h * 0.53)
+        ),
+        (
+            max(1, int(w * 0.37)),
+            max(1, int(h * 0.51))
+        ),
+        0,
+        0,
+        360,
+        255,
+        -1
+    )
+
+    # GrabCut aur center prior ka controlled merge.
+    center_part = cv2.bitwise_and(
+        center,
+        cv2.dilate(
+            subject,
+            np.ones(
+                (9, 9),
+                np.uint8
+            ),
+            iterations=2
+        )
+    )
+
+    subject = cv2.bitwise_or(
+        subject,
+        center_part
+    )
+
+    kernel = np.ones(
+        (5, 5),
+        np.uint8
+    )
+
+    subject = cv2.morphologyEx(
+        subject,
+        cv2.MORPH_CLOSE,
+        kernel,
+        iterations=2
+    )
+
+    subject = cv2.morphologyEx(
+        subject,
+        cv2.MORPH_OPEN,
+        np.ones(
+            (3, 3),
+            np.uint8
+        ),
+        iterations=1
+    )
+
+    # Slight expansion taaki hair edges accidentally
+    # background processing mein na chale jayen.
+    subject = cv2.dilate(
+        subject,
+        np.ones(
+            (5, 5),
+            np.uint8
+        ),
+        iterations=1
+    )
+
+    return subject
+
+
+# ============================================================
+# LAB K-MEANS QUANTIZATION
+# ============================================================
+
+def quantize_lab(image, colors):
+    """
+    RGB distance ke badle LAB space mein clustering.
+
+    Isse visually similar shades ko merge karna generally
+    better hota hai.
+    """
 
     lab = cv2.cvtColor(
         image,
         cv2.COLOR_BGR2LAB
     )
 
-    height, width = lab.shape[:2]
+    h, w = lab.shape[:2]
 
     pixels = lab.reshape(
         (-1, 3)
     ).astype(np.float32)
 
+    # KMeans ko unnecessarily millions of samples na do.
+    count = pixels.shape[0]
+
+    max_samples = 120000
+
+    if count > max_samples:
+        rng = np.random.default_rng(12345)
+
+        indices = rng.choice(
+            count,
+            max_samples,
+            replace=False
+        )
+
+        samples = pixels[indices]
+
+    else:
+        samples = pixels
+
     criteria = (
         cv2.TERM_CRITERIA_EPS +
         cv2.TERM_CRITERIA_MAX_ITER,
         35,
-        0.4
+        0.45
     )
 
-    cv2.setRNGSeed(12345)
-
-    compactness, labels, centers = cv2.kmeans(
-        pixels,
-        number_of_colors,
+    compactness, sample_labels, centers = cv2.kmeans(
+        samples,
+        colors,
         None,
         criteria,
         4,
         cv2.KMEANS_PP_CENTERS
     )
 
-    labels = labels.reshape(
-        (height, width)
+    # Har source pixel ko nearest LAB center assign karo.
+    # Chunking memory use control karta hai.
+    labels = np.empty(
+        count,
+        dtype=np.int32
     )
 
-    centers = np.clip(
-        centers,
+    chunk_size = 50000
+
+    centers_f = centers.astype(
+        np.float32
+    )
+
+    for start in range(
+        0,
+        count,
+        chunk_size
+    ):
+        end = min(
+            count,
+            start + chunk_size
+        )
+
+        chunk = pixels[
+            start:end
+        ]
+
+        diff = (
+            chunk[:, None, :] -
+            centers_f[None, :, :]
+        )
+
+        distance = np.sum(
+            diff * diff,
+            axis=2
+        )
+
+        labels[start:end] = np.argmin(
+            distance,
+            axis=1
+        )
+
+    centers_u8 = np.clip(
+        centers_f,
         0,
         255
     ).astype(np.uint8)
 
-    quantized = centers[
+    quantized_lab = centers_u8[
         labels
-    ]
-
-    return (
-        quantized,
-        labels,
-        centers
+    ].reshape(
+        (h, w, 3)
     )
-
-
-# ==========================================================
-# LAB COLOR DISTANCE
-# ==========================================================
-
-def lab_distance(
-    color_a,
-    color_b
-):
-
-    a = color_a.astype(
-        np.float32
-    )
-
-    b = color_b.astype(
-        np.float32
-    )
-
-    return float(
-        np.linalg.norm(a - b)
-    )
-
-
-# ==========================================================
-# FIND NEIGHBOURING LABELS
-# ==========================================================
-
-def get_neighbor_labels(
-    labels,
-    component_mask
-):
-
-    mask_uint8 = (
-        component_mask.astype(np.uint8)
-        * 255
-    )
-
-    kernel = np.ones(
-        (3, 3),
-        dtype=np.uint8
-    )
-
-    dilated = cv2.dilate(
-        mask_uint8,
-        kernel,
-        iterations=1
-    )
-
-    border = (
-        (dilated > 0)
-        &
-        (~component_mask)
-    )
-
-    if not np.any(border):
-        return []
-
-    values = labels[
-        border
-    ]
-
-    unique_labels = np.unique(
-        values
-    )
-
-    return unique_labels.tolist()
-
-
-# ==========================================================
-# SMALL REGION MERGING
-# ==========================================================
-
-def merge_small_regions(
-    labels,
-    centers
-):
-
-    cleaned = labels.copy()
-
-    height, width = labels.shape
-
-    total_pixels = (
-        height * width
-    )
-
-    adaptive_minimum = int(
-        total_pixels * 0.000012
-    )
-
-    min_region = max(
-        MIN_REGION_PIXELS,
-        adaptive_minimum
-    )
-
-    number_of_colors = len(
-        centers
-    )
-
-    kernel = np.ones(
-        (3, 3),
-        dtype=np.uint8
-    )
-
-    # Do cleanup passes
-    for pass_index in range(2):
-
-        changed = 0
-
-        for color_index in range(
-            number_of_colors
-        ):
-
-            mask = (
-                cleaned == color_index
-            ).astype(np.uint8)
-
-            if not np.any(mask):
-                continue
-
-            (
-                component_count,
-                component_map,
-                stats,
-                centroids
-            ) = cv2.connectedComponentsWithStats(
-                mask,
-                connectivity=8
-            )
-
-            source_color = centers[
-                color_index
-            ]
-
-            for component_id in range(
-                1,
-                component_count
-            ):
-
-                area = int(
-                    stats[
-                        component_id,
-                        cv2.CC_STAT_AREA
-                    ]
-                )
-
-                # Large regions preserve
-                if area >= min_region:
-                    continue
-
-                component_mask = (
-                    component_map ==
-                    component_id
-                )
-
-                source_l = int(
-                    source_color[0]
-                )
-
-                # Protect important dark details
-                if (
-                    source_l <=
-                    DARK_PROTECTION_L
-                ):
-
-                    dark_minimum = max(
-                        5,
-                        min_region // 3
-                    )
-
-                    if area >= dark_minimum:
-                        continue
-
-                neighbor_labels = (
-                    get_neighbor_labels(
-                        cleaned,
-                        component_mask
-                    )
-                )
-
-                neighbor_labels = [
-                    value
-                    for value
-                    in neighbor_labels
-                    if value != color_index
-                ]
-
-                if not neighbor_labels:
-                    continue
-
-                best_label = None
-                best_score = float(
-                    'inf'
-                )
-
-                component_u8 = (
-                    component_mask.astype(
-                        np.uint8
-                    )
-                    * 255
-                )
-
-                dilated = cv2.dilate(
-                    component_u8,
-                    kernel,
-                    iterations=1
-                )
-
-                border = (
-                    (dilated > 0)
-                    &
-                    (~component_mask)
-                )
-
-                # Find best neighbouring region
-                for neighbor in neighbor_labels:
-
-                    neighbor = int(
-                        neighbor
-                    )
-
-                    neighbor_color = centers[
-                        neighbor
-                    ]
-
-                    distance = lab_distance(
-                        source_color,
-                        neighbor_color
-                    )
-
-                    touching = int(
-                        np.count_nonzero(
-                            border
-                            &
-                            (
-                                cleaned ==
-                                neighbor
-                            )
-                        )
-                    )
-
-                    if touching <= 0:
-                        continue
-
-                    # Similar color + larger shared
-                    # boundary gets preference
-                    score = (
-                        distance
-                        -
-                        min(
-                            touching,
-                            20
-                        ) * 0.08
-                    )
-
-                    if score < best_score:
-
-                        best_score = score
-                        best_label = neighbor
-
-                if best_label is None:
-                    continue
-
-                actual_distance = (
-                    lab_distance(
-                        source_color,
-                        centers[
-                            best_label
-                        ]
-                    )
-                )
-
-                allowed_distance = (
-                    MERGE_COLOR_DISTANCE
-                )
-
-                # Dark lines/details ke liye
-                # stricter merging
-                if (
-                    source_l <=
-                    DARK_PROTECTION_L
-                ):
-
-                    allowed_distance = min(
-                        allowed_distance,
-                        12.0
-                    )
-
-                if (
-                    actual_distance <=
-                    allowed_distance
-                ):
-
-                    cleaned[
-                        component_mask
-                    ] = best_label
-
-                    changed += 1
-
-        if changed == 0:
-            break
-
-    return cleaned
-
-
-# ==========================================================
-# MICRO CLEANUP
-# ==========================================================
-
-def final_micro_cleanup(
-    labels
-):
-
-    result = labels.copy()
-
-    height, width = (
-        result.shape
-    )
-
-    padded = np.pad(
-        result,
-        1,
-        mode='edge'
-    )
-
-    center = padded[
-        1:height + 1,
-        1:width + 1
-    ]
-
-    top = padded[
-        0:height,
-        1:width + 1
-    ]
-
-    bottom = padded[
-        2:height + 2,
-        1:width + 1
-    ]
-
-    left = padded[
-        1:height + 1,
-        0:width
-    ]
-
-    right = padded[
-        1:height + 1,
-        2:width + 2
-    ]
-
-    same_neighbours = (
-        (top == bottom)
-        &
-        (top == left)
-        &
-        (top == right)
-    )
-
-    isolated = (
-        same_neighbours
-        &
-        (center != top)
-    )
-
-    result[
-        isolated
-    ] = top[
-        isolated
-    ]
-
-    return result
-
-
-# ==========================================================
-# LABELS TO IMAGE
-# ==========================================================
-
-def labels_to_bgr(
-    labels,
-    centers
-):
-
-    quantized_lab = centers[
-        labels
-    ].astype(np.uint8)
 
     return cv2.cvtColor(
         quantized_lab,
@@ -510,164 +374,419 @@ def labels_to_bgr(
     )
 
 
-# ==========================================================
-# MAIN PREPROCESSING
-# ==========================================================
+# ============================================================
+# BACKGROUND PROCESSING
+# ============================================================
+
+def process_background(image):
+    """
+    Background ko significantly simplify karte hain.
+
+    Ye tumhari current output ke cloudy/topographic
+    contour problem ko reduce karega.
+    """
+
+    # Strong edge-preserving simplification.
+    bg = cv2.bilateralFilter(
+        image,
+        d=13,
+        sigmaColor=75,
+        sigmaSpace=75
+    )
+
+    bg = cv2.bilateralFilter(
+        bg,
+        d=11,
+        sigmaColor=55,
+        sigmaSpace=55
+    )
+
+    bg = quantize_lab(
+        bg,
+        BACKGROUND_COLORS
+    )
+
+    # Quantized boundaries ko tiny noise se clean karo.
+    bg = cv2.medianBlur(
+        bg,
+        5
+    )
+
+    return bg
+
+
+# ============================================================
+# SUBJECT PROCESSING
+# ============================================================
+
+def process_subject(image):
+    """
+    Subject mein details background se zyada preserve rahengi.
+    """
+
+    smooth = edge_preserving_smooth(
+        image
+    )
+
+    result = quantize_lab(
+        smooth,
+        SUBJECT_COLORS
+    )
+
+    # Very light cleanup.
+    result = cv2.medianBlur(
+        result,
+        3
+    )
+
+    return result
+
+
+# ============================================================
+# EDGE MASK
+# ============================================================
+
+def build_important_edge_mask(image, subject_mask):
+    """
+    Strong dark/high-contrast lines ko identify karta hai.
+
+    Eyes, mouth, hair separations, clothing lines etc.
+    """
+
+    gray = cv2.cvtColor(
+        image,
+        cv2.COLOR_BGR2GRAY
+    )
+
+    # Slight denoise before edge detection.
+    gray = cv2.GaussianBlur(
+        gray,
+        (3, 3),
+        0
+    )
+
+    edges = cv2.Canny(
+        gray,
+        55,
+        145,
+        L2gradient=True
+    )
+
+    edges = cv2.bitwise_and(
+        edges,
+        subject_mask
+    )
+
+    edges = cv2.dilate(
+        edges,
+        np.ones(
+            (2, 2),
+            np.uint8
+        ),
+        iterations=1
+    )
+
+    return edges
+
+
+# ============================================================
+# PRESERVE IMPORTANT LINES
+# ============================================================
+
+def restore_important_edges(
+    original,
+    processed,
+    edge_mask
+):
+    """
+    Processed flat colors ke upar original ka limited edge
+    information blend karte hain.
+
+    Full original restore nahi hota, warna noise wapas aa jayega.
+    """
+
+    result = processed.copy()
+
+    # Edge pixels ko mostly original se lao.
+    alpha = (
+        edge_mask.astype(
+            np.float32
+        ) / 255.0
+    )[..., None]
+
+    # Edge strength intentionally limited.
+    alpha *= 0.72
+
+    blended = (
+        original.astype(np.float32) * alpha +
+        result.astype(np.float32) * (1.0 - alpha)
+    )
+
+    result = np.clip(
+        blended,
+        0,
+        255
+    ).astype(np.uint8)
+
+    return result
+
+
+# ============================================================
+# REMOVE ISOLATED TINY COLOR NOISE
+# ============================================================
+
+def cleanup_small_islands(image):
+    """
+    Exact quantized colors ke tiny islands ko local median color
+    se replace karta hai.
+
+    Heavy operation avoid karne ke liye color masks par
+    connected-component cleanup use karte hain.
+    """
+
+    result = image.copy()
+
+    h, w = result.shape[:2]
+
+    flat = result.reshape(
+        -1,
+        3
+    )
+
+    colors, inverse = np.unique(
+        flat,
+        axis=0,
+        return_inverse=True
+    )
+
+    labels_image = inverse.reshape(
+        h,
+        w
+    )
+
+    replacement_source = cv2.medianBlur(
+        result,
+        5
+    )
+
+    for color_index in range(
+        len(colors)
+    ):
+        mask = np.where(
+            labels_image == color_index,
+            255,
+            0
+        ).astype(np.uint8)
+
+        count, components, stats, _ = (
+            cv2.connectedComponentsWithStats(
+                mask,
+                connectivity=8
+            )
+        )
+
+        for component_id in range(
+            1,
+            count
+        ):
+            area = stats[
+                component_id,
+                cv2.CC_STAT_AREA
+            ]
+
+            if area >= MIN_REGION_AREA:
+                continue
+
+            tiny = (
+                components ==
+                component_id
+            )
+
+            result[tiny] = (
+                replacement_source[tiny]
+            )
+
+    return result
+
+
+# ============================================================
+# MERGE SUBJECT + BACKGROUND
+# ============================================================
+
+def merge_layers(
+    subject,
+    background,
+    subject_mask
+):
+    """
+    Hard mask use karte hain so VTracer ko intermediate
+    semi-transparent blending shades na milen.
+    """
+
+    mask = (
+        subject_mask > 0
+    )
+
+    result = background.copy()
+
+    result[mask] = subject[mask]
+
+    return result
+
+
+# ============================================================
+# FINAL CLEANUP
+# ============================================================
+
+def final_cleanup(image):
+    """
+    Tiny color noise cleanup ke baad very light
+    edge-aware polish.
+    """
+
+    image = cleanup_small_islands(
+        image
+    )
+
+    image = cv2.bilateralFilter(
+        image,
+        d=5,
+        sigmaColor=14,
+        sigmaSpace=16
+    )
+
+    return image
+
+
+# ============================================================
+# MAIN PIPELINE
+# ============================================================
 
 def preprocess(
     input_path,
     output_path
 ):
-
     print(
-        'Reading image...',
-        flush=True
+        "Loading image..."
     )
 
-    image = cv2.imread(
-        input_path,
-        cv2.IMREAD_COLOR
+    original = load_image(
+        input_path
     )
 
-    if image is None:
-
-        raise RuntimeError(
-            'Input image read nahi ho saki'
-        )
-
-    # ----------------------------------------------
-    # STEP 1 - Resize
-    # ----------------------------------------------
-
-    image = resize_image(
-        image,
-        MAX_SIZE
+    original = resize_for_processing(
+        original
     )
 
     print(
-        f'Processing size: {image.shape[1]}x{image.shape[0]}',
-        flush=True
+        f"Size: {original.shape[1]}x{original.shape[0]}"
     )
 
-    # ----------------------------------------------
-    # STEP 2 - Edge-preserving denoise
-    # ----------------------------------------------
 
     print(
-        'Edge-preserving smoothing...',
-        flush=True
+        "Detecting foreground..."
     )
 
-    image = edge_preserving_filter(
-        image
+    subject_mask = create_subject_mask(
+        original
     )
 
-    # ----------------------------------------------
-    # STEP 3 - LAB color clustering
-    # ----------------------------------------------
 
     print(
-        f'LAB quantization: {NUM_COLORS} colors...',
-        flush=True
+        "Simplifying subject..."
     )
 
-    (
-        quantized_lab,
-        labels,
-        centers
-    ) = quantize_lab(
-        image,
-        NUM_COLORS
+    subject = process_subject(
+        original
     )
 
-    # ----------------------------------------------
-    # STEP 4 - Region merging
-    # ----------------------------------------------
 
     print(
-        'Merging small similar regions...',
-        flush=True
+        "Simplifying background..."
     )
 
-    labels = merge_small_regions(
-        labels,
-        centers
+    background = process_background(
+        original
     )
 
-    # ----------------------------------------------
-    # STEP 5 - Micro cleanup
-    # ----------------------------------------------
 
     print(
-        'Removing isolated pixels...',
-        flush=True
+        "Building protected edge mask..."
     )
 
-    labels = final_micro_cleanup(
-        labels
+    edges = build_important_edge_mask(
+        original,
+        subject_mask
     )
 
-    # ----------------------------------------------
-    # STEP 6 - Rebuild final raster
-    # ----------------------------------------------
 
-    result = labels_to_bgr(
-        labels,
-        centers
+    print(
+        "Restoring important line detail..."
     )
 
-    # ----------------------------------------------
-    # STEP 7 - Save
-    # ----------------------------------------------
+    subject = restore_important_edges(
+        original,
+        subject,
+        edges
+    )
+
+
+    print(
+        "Combining layers..."
+    )
+
+    combined = merge_layers(
+        subject,
+        background,
+        subject_mask
+    )
+
+
+    print(
+        "Cleaning small color regions..."
+    )
+
+    result = final_cleanup(
+        combined
+    )
+
 
     success = cv2.imwrite(
         output_path,
         result,
         [
             cv2.IMWRITE_PNG_COMPRESSION,
-            6
+            4
         ]
     )
 
-    if not success:
 
+    if not success:
         raise RuntimeError(
-            'Processed PNG save nahi hui'
+            "Processed PNG save failed"
         )
 
+
     print(
-        'Preprocessing complete.',
-        flush=True
+        f"Processed image saved: {output_path}"
     )
 
 
-# ==========================================================
-# COMMAND LINE ENTRY
-# ==========================================================
+# ============================================================
+# ENTRY
+# ============================================================
 
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     if len(sys.argv) != 3:
-
         print(
-            'Usage: python preprocess.py input.png output.png',
-            file=sys.stderr
+            "Usage: python preprocess.py input.png output.png"
         )
 
-        sys.exit(1)
-
-    try:
-
-        preprocess(
-            sys.argv[1],
-            sys.argv[2]
+        sys.exit(
+            1
         )
 
-    except Exception as error:
-
-        print(
-            str(error),
-            file=sys.stderr
-        )
-
-        sys.exit(1)
+    preprocess(
+        sys.argv[1],
+        sys.argv[2]
+    )

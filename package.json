@@ -1,6 +1,7 @@
 {
   "name": "vectorizer-site",
   "version": "1.0.0",
+  "description": "Raster image to SVG and Vector PDF converter",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -8,7 +9,9 @@
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2",
     "express": "^5.2.1",
-    "multer": "^2.4.0",
-    "sharp": "^0.35.4"
+    "multer": "^2.0.2",
+    "pdfkit": "^0.17.2",
+    "sharp": "^0.35.4",
+    "svg-to-pdfkit": "^0.1.8"
   }
 }
