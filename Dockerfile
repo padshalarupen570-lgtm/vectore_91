@@ -1,7 +1,14 @@
 # ============================================================
-# VECTORE - RENDER PRODUCTION IMAGE
-# Node.js + Python + OpenCV + Rust + VTracer
+# VECTORE - RENDER PRODUCTION
+#
+# Node.js
+# Python
+# OpenCV
+# NumPy
+# Rust
+# Exact VTracer CLI used locally
 # ============================================================
+
 
 FROM node:22-bookworm
 
@@ -19,13 +26,14 @@ RUN apt-get update \
         pkg-config \
         curl \
         ca-certificates \
+        git \
         libgl1 \
         libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 
 # ============================================================
-# APPLICATION DIRECTORY
+# APP DIRECTORY
 # ============================================================
 
 WORKDIR /app
@@ -37,17 +45,23 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 
+
 RUN npm ci --omit=dev
 
 
 # ============================================================
-# PYTHON ENVIRONMENT
+# PYTHON VIRTUAL ENVIRONMENT
 # ============================================================
 
 RUN python3 -m venv /opt/venv
 
+
 ENV PATH="/opt/venv/bin:$PATH"
 
+
+# ============================================================
+# PYTHON DEPENDENCIES
+# ============================================================
 
 COPY requirements.txt ./
 
@@ -71,34 +85,56 @@ RUN curl \
     --tlsv1.2 \
     -sSf \
     https://sh.rustup.rs \
-    | sh -s -- -y --profile minimal
+    | sh -s -- \
+        -y \
+        --profile minimal
 
 
-# Rust/Cargo path
+# ============================================================
+# RUST PATH
+# ============================================================
+
 ENV PATH="/root/.cargo/bin:/opt/venv/bin:$PATH"
 
 
-# Verify Rust versions during Render build
+# ============================================================
+# VERIFY RUST
+# ============================================================
+
 RUN rustc --version \
     && cargo --version
 
 
 # ============================================================
-# INSTALL VTRACER
+# INSTALL EXACT VTRACER USED ON WINDOWS
 # ============================================================
 
 RUN cargo install \
-    vtracer \
-    --locked
-
-
-# Verify VTracer exists
-RUN test -x /root/.cargo/bin/vtracer \
-    && /root/.cargo/bin/vtracer --version
+    --git https://github.com/visioncortex/vtracer \
+    --rev 169e845f190ab24de93772171e097d49f660e268 \
+    vtracer-cli
 
 
 # ============================================================
-# COPY PROJECT
+# VERIFY VTRACER
+# ============================================================
+
+RUN test -x /root/.cargo/bin/vtracer
+
+
+RUN /root/.cargo/bin/vtracer --version
+
+
+# ============================================================
+# SHOW VTRACER HELP DURING BUILD
+# Useful for debugging Render logs.
+# ============================================================
+
+RUN /root/.cargo/bin/vtracer --help | head -80
+
+
+# ============================================================
+# COPY APPLICATION
 # ============================================================
 
 COPY . .
@@ -110,7 +146,9 @@ COPY . .
 
 ENV NODE_ENV=production
 
+
 ENV PYTHON_EXE=/opt/venv/bin/python
+
 
 ENV VTRACER_EXE=/root/.cargo/bin/vtracer
 
@@ -123,7 +161,7 @@ EXPOSE 3000
 
 
 # ============================================================
-# START APPLICATION
+# START
 # ============================================================
 
 CMD ["npm", "start"]
