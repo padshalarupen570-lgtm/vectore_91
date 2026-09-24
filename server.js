@@ -1,39 +1,19 @@
-const express =
-  require("express");
-
-const multer =
-  require("multer");
-
-const sharp =
-  require("sharp");
-
-const fs =
-  require("fs");
-
-const path =
-  require("path");
-
-const os =
-  require("os");
-
-const {
-  execFile
-} =
-  require("child_process");
-
-const PDFDocument =
-  require("pdfkit");
-
-const SVGtoPDF =
-  require("svg-to-pdfkit");
+const express = require("express");
+const multer = require("multer");
+const sharp = require("sharp");
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { execFile } = require("child_process");
+const PDFDocument = require("pdfkit");
+const SVGtoPDF = require("svg-to-pdfkit");
 
 
 /* =========================================================
    APP
 ========================================================= */
 
-const app =
-  express();
+const app = express();
 
 const PORT =
   process.env.PORT ||
@@ -45,66 +25,39 @@ const PORT =
 ========================================================= */
 
 const IS_WINDOWS =
-  process.platform ===
-  "win32";
+  process.platform === "win32";
 
 
 /* =========================================================
    PATHS
 ========================================================= */
 
-/*
- * WINDOWS:
- *
- * C:\Users\USER\.cargo\bin\vtracer.exe
- *
- * RENDER / DOCKER / LINUX:
- *
- * /root/.cargo/bin/vtracer
- *
- * Environment variable ko highest priority milegi.
- */
-
 const VTRACER_EXE =
   process.env.VTRACER_EXE
   ||
   (
     IS_WINDOWS
-
       ? path.join(
           process.env.USERPROFILE || "",
           ".cargo",
           "bin",
           "vtracer.exe"
         )
-
       : "/root/.cargo/bin/vtracer"
   );
 
-
-/*
- * WINDOWS:
- *
- * project\.venv\Scripts\python.exe
- *
- * RENDER / DOCKER:
- *
- * /opt/venv/bin/python
- */
 
 const PYTHON_EXE =
   process.env.PYTHON_EXE
   ||
   (
     IS_WINDOWS
-
       ? path.join(
           __dirname,
           ".venv",
           "Scripts",
           "python.exe"
         )
-
       : "/opt/venv/bin/python"
   );
 
@@ -124,13 +77,8 @@ app.use(
   "/api/export/pdf",
 
   express.text({
-
-    type:
-      "*/*",
-
-    limit:
-      "30mb"
-
+    type: "*/*",
+    limit: "30mb"
   })
 );
 
@@ -146,12 +94,10 @@ const upload =
       multer.memoryStorage(),
 
     limits: {
-
       fileSize:
         25 *
         1024 *
         1024
-
     },
 
     fileFilter:
@@ -164,9 +110,7 @@ const upload =
         if (
           !file.mimetype
           ||
-          !file.mimetype.startsWith(
-            "image/"
-          )
+          !file.mimetype.startsWith("image/")
         ) {
 
           return cb(
@@ -176,13 +120,11 @@ const upload =
           );
         }
 
-
         cb(
           null,
           true
         );
       }
-
   });
 
 
@@ -204,19 +146,6 @@ app.use(
    HEALTH CHECK API
 ========================================================= */
 
-/*
- * Render deployment ke baad:
- *
- * https://YOUR-APP.onrender.com/api/health
- *
- * Is endpoint se check kar sakte hain:
- *
- * Node
- * Python
- * VTracer
- * preprocess.py
- */
-
 app.get(
   "/api/health",
 
@@ -230,18 +159,15 @@ app.get(
         PYTHON_EXE
       );
 
-
     const vtracerExists =
       fs.existsSync(
         VTRACER_EXE
       );
 
-
     const preprocessorExists =
       fs.existsSync(
         PREPROCESS_SCRIPT
       );
-
 
     const healthy =
       pythonExists
@@ -398,7 +324,6 @@ function execute(
         args,
 
         {
-
           windowsHide:
             true,
 
@@ -406,7 +331,6 @@ function execute(
             30 *
             1024 *
             1024
-
         },
 
         (
@@ -422,6 +346,26 @@ function execute(
             console.log(
               stdout.trim()
             );
+          }
+
+
+          if (
+            stderr
+            &&
+            !error
+          ) {
+
+            const text =
+              stderr.trim();
+
+            if (
+              text
+            ) {
+
+              console.log(
+                text
+              );
+            }
           }
 
 
@@ -481,10 +425,8 @@ async function normalizeInput(
     .rotate()
 
     .flatten({
-
       background:
         "#ffffff"
-
     })
 
     .toColourspace(
@@ -492,10 +434,8 @@ async function normalizeInput(
     )
 
     .png({
-
       compressionLevel:
         4
-
     })
 
     .toFile(
@@ -552,63 +492,49 @@ async function traceImage(
   /*
    * IMPORTANT:
    *
-   * Tumhari existing vectorization profile ko
-   * deployment ke liye change nahi kiya gaya.
+   * Render par installed VTracer CLI ne usage diya:
+   *
+   * vtracer --input <input>
+   *         --output <output>
+   *         --preset <preset>
+   *
+   * Isliye unsupported custom arguments remove
+   * kar diye gaye hain.
+   *
+   * Removed:
+   * --clustering
+   * --hierarchical
+   * --mode
+   * --filter-speckle
+   * --color-precision
+   * --gradient-step
+   * --simplify
+   * --path-precision
+   * --max-colors
+   * --optimize
    */
 
   const args = [
 
-    "-i",
+    "--input",
     input,
 
-    "-o",
+    "--output",
     output,
 
-
     "--preset",
-    "poster",
-
-
-    "--clustering",
-    "color-cluster",
-
-
-    "--hierarchical",
-    "stacked",
-
-
-    "--mode",
-    "spline",
-
-
-    "--filter-speckle",
-    "3",
-
-
-    "--color-precision",
-    "7",
-
-
-    "--gradient-step",
-    "18",
-
-
-    "--simplify",
-    "1.25",
-
-
-    "--path-precision",
-    "3",
-
-
-    "--max-colors",
-    "40",
-
-
-    "--optimize",
-    "2"
+    "poster"
 
   ];
+
+
+  console.log(
+    "Running VTracer..."
+  );
+
+  console.log(
+    "VTracer preset: poster"
+  );
 
 
   await execute(
@@ -629,6 +555,22 @@ async function traceImage(
 
     throw new Error(
       "SVG generate nahi hua"
+    );
+  }
+
+
+  const stat =
+    await fs.promises.stat(
+      output
+    );
+
+
+  if (
+    !stat.size
+  ) {
+
+    throw new Error(
+      "VTracer ne empty SVG generate kiya"
     );
   }
 }
@@ -721,7 +663,7 @@ async function vectorizeAuto(
 
 
     console.log(
-      "[3/3] VTracer balanced tracing..."
+      "[3/3] VTracer tracing..."
     );
 
 
@@ -830,10 +772,8 @@ app.post(
         return res
           .status(400)
           .json({
-
             error:
               "Image required"
-
           });
       }
 
@@ -988,21 +928,17 @@ function getSvgDimensions(
 
     const values =
       viewBoxMatch[1]
-
         .trim()
-
         .split(
           /[\s,]+/
         )
-
         .map(
           Number
         );
 
 
     if (
-      values.length ===
-        4
+      values.length === 4
       &&
       values.every(
         Number.isFinite
@@ -1048,11 +984,8 @@ function getSvgDimensions(
 
 
   return {
-
     width,
-
     height
-
   };
 }
 
@@ -1089,10 +1022,8 @@ app.post(
         return res
           .status(400)
           .json({
-
             error:
               "Valid SVG required"
-
           });
       }
 
@@ -1150,11 +1081,8 @@ app.post(
         new PDFDocument({
 
           size: [
-
             pageWidth,
-
             pageHeight
-
           ],
 
           margin:
@@ -1188,12 +1116,6 @@ app.post(
         res
       );
 
-
-      /*
-       * SVG -> PDF vector.
-       *
-       * Raster image mein convert nahi ho raha.
-       */
 
       SVGtoPDF(
 
@@ -1289,10 +1211,8 @@ app.use(
       return res
         .status(400)
         .json({
-
           error:
             "Maximum image size 25 MB hai"
-
         });
     }
 
@@ -1300,11 +1220,9 @@ app.use(
     return res
       .status(400)
       .json({
-
         error:
           err.message ||
           "Upload error"
-
       });
   }
 );
